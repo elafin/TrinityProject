@@ -9,5 +9,17 @@
 <body>
 <h1 th:text="${home1}"></h1>
 <h3 th:text="${home2}"></h3>
+
+<form action="#" th:action="@{/umlFromClasses}" method="POST" th:object="${classesForm}">
+
+    <div>
+        <input type="file" th:field="*{folder}" id="ctrl" webkitdirectory directory multiple /> Folder z plikami *.java
+    </div>
+
+    <div>
+        <button type="submit">Generuj UML</button>
+    </div>
+</form>
+
 </body>
 </html>

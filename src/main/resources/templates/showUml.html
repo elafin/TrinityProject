@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org" >
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+<body>
+
+<br>
+<a class="btn btn-primary" href="/"><button>Home</button></a>
+
+<br>
+
+<canvas id="myChart" style="width:100%;max-width:900px;height:100%;max-height:450px" ></canvas>
+
+<script th:inline="javascript">
+
+    var classNames = [[${classNames}]];
+    var fields = [[${fields}]];
+    var constructors = [[${constructors}]];
+    var methods = [[${methods}]];
+
+    console.log(5);
+    console.log(classNames[0]);
+
+
+
+    let dpi = window.devicePixelRatio;
+    var canvas = document.getElementById("myChart");
+    var ctx = canvas.getContext("2d");
+
+    let style_height = + getComputedStyle(canvas).getPropertyValue("height").slice(0, -2);
+    let style_width = + getComputedStyle(canvas).getPropertyValue("width").slice(0, -2);
+    canvas.setAttribute('height', style_height * dpi);
+    canvas.setAttribute('width', style_width * dpi);
+
+    var shapeX = 10;
+    var shapeY = 10;
+
+    var fontX = 10;
+    var fontY = 50;
+
+
+    ctx.font = "12px Arial";
+    ctx.fillText(classNames[0], fontX, fontY);
+
+    fontY = fontY + 30;
+
+    ctx.beginPath();
+    ctx.lineWidth = "5";
+    ctx.strokeStyle = "green";
+    ctx.rect(5, 30, 500, 340);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.lineWidth = "5";
+    ctx.strokeStyle = "green";
+    ctx.rect(5, 60, 500, 310);
+    ctx.stroke();
+
+    for (let i = 0; i < classNames.length; i++) {
+
+        for (let j = 0; j < fields.length; j++) {
+            if (!fields[i][j]) {
+                break;
+            }
+            ctx.font = "12px Arial";
+            ctx.fillText(fields[i][j], fontX, fontY);
+            fontY = fontY + 25;
+        }
+
+        fontY = fontY + 15;
+
+        for (let j = 0; j < constructors.length; j++) {
+            if (!constructors[i][j]) {
+                break;
+            }
+            ctx.font = "12px Arial";
+            ctx.fillText(constructors[i][j], fontX, fontY);
+            fontY = fontY + 25;
+        }
+
+        fontY = fontY + 15;
+
+        for (let j = 0; j < methods.length; j++) {
+            if (!methods[i][j]) {
+                break;
+            }
+            ctx.font = "12px Arial";
+            ctx.fillText(methods[i][j], fontX, fontY);
+            fontY = fontY + 25;
+        }
+    }
+
+</script>
+
+</body>
+</html>
