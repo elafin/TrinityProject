@@ -10,16 +10,24 @@
 <h1 th:text="${home1}"></h1>
 <h3 th:text="${home2}"></h3>
 
-<form action="#" th:action="@{/umlFromClasses}" method="POST" th:object="${classesForm}">
+<form th:action="@{/umlFromJar}" method="post" enctype="multipart/form-data">
+    <div>
+        <input type="file" name="jarFile" accept=".jar" required />
+        <span>Wgraj plik .jar (ze skompilowanymi klasami .class)</span>
+    </div>
 
     <div>
-        <input type="file" th:field="*{folder}" id="ctrl" webkitdirectory directory multiple /> Folder z plikami *.java
+        <label>
+            <input type="checkbox" name="publicOnly" checked>
+            Tylko public
+        </label>
     </div>
 
     <div>
         <button type="submit">Generuj UML</button>
     </div>
 </form>
+
 
 </body>
 </html>

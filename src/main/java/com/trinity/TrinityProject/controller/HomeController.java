@@ -4,23 +4,28 @@ import com.trinity.TrinityProject.model.ClassesForm;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.support.SessionStatus;
+import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
 import java.lang.reflect.*;
-import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
-import java.security.SecureClassLoader;
-import java.util.ArrayList;
-import java.util.List;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.*;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
+import java.util.stream.Collectors;
 
 @Controller
+@SessionAttributes({"classNames", "fields", "constructors", "methods"})
 public class HomeController {
 
     @GetMapping("/")
-    public String homePage(Model model){
+    public String homePage(Model model) {
         model.addAttribute("home1", "Witaj na stronie domowej!");
         model.addAttribute("home2", "Znajdziesz tu info o stronie.");
+
 
         ClassesForm classesForm = new ClassesForm(new ArrayList<>());
         model.addAttribute("classesForm", classesForm);
@@ -28,403 +33,155 @@ public class HomeController {
         return "home";
     }
 
-    public static String removeExtension(String file){
-        return file.replaceFirst("[.][^.]+$", "");
+
+
+    private static String formatParams(Parameter[] p) {
+        StringBuilder sb = new StringBuilder("(");
+        for (int i = 0; i < p.length; i++) {
+            sb.append(p[i].getType().getName()).append(" ").append(p[i].getName());
+            if (i != p.length - 1) sb.append(", ");
+        }
+        sb.append(")");
+        return sb.toString();
     }
 
-    public static String getClass(File file){
-        return removeExtension(file.getName());
+    private static String fieldToString(Field field) {
+        String mod = Modifier.toString(field.getModifiers());
+        return mod + " " + field.getType().getName() + " " + field.getName();
     }
 
-    class ExampleClass1 {
-        private int field1;
-        private double field2;
-        private String field3;
+    private static String constructorToString(Constructor<?> constructor) {
+        String mod = Modifier.toString(constructor.getModifiers());
+        String returnType = constructor.getAnnotatedReturnType().toString();
+        String params = formatParams(constructor.getParameters());
 
-        public ExampleClass1() {};
 
-        public ExampleClass1(int field1, double field2, String field3) {
-            this.field1 = field1;
-            this.field2 = field2;
-            this.field3 = field3;
-        }
+        String ctorName = constructor.getDeclaringClass().getSimpleName();
 
-        public int getField1() {
-            return field1;
-        }
-
-        public void setField1(int field1) {
-            this.field1 = field1;
-        }
-
-        public double getField2() {
-            return field2;
-        }
-
-        public void setField2(double field2) {
-            this.field2 = field2;
-        }
-
-        public String getField3() {
-            return field3;
-        }
-
-        public void setField3(String field3) {
-            this.field3 = field3;
-        }
+        return mod + " " + returnType.replace("class ", "") + " " + ctorName + params;
     }
 
-    public static String checkMod(Member member) {
-        String str = "";
-        String mod = Modifier.toString(member.getModifiers()).split(" ")[0];
-        String param = "";
-        String returnType = "";
-
-        if (member instanceof Constructor<?>) {
-            param += "(";
-            Constructor<?> con = (Constructor<?>) member;
-            Parameter[] p = con.getParameters();
-
-            returnType = con.getAnnotatedReturnType().toString();
-
-            for (int i = 0; i < p.length; i++) {
-                param += p[i].getType().getName() + " " + p[i].getName();
-                if (i != p.length - 1) param += ", ";
-            }
-            param += ")";
-        }
-
-        if (member instanceof Method) {
-            param += "(";
-            Method m = (Method) member;
-            Parameter[] p = ((Method) member).getParameters();
-
-            returnType = m.getReturnType().getName();
-
-            for (int i = 0; i < p.length; i++) {
-                param += p[i].getType().getName() + " " + p[i].getName();
-                if (i != p.length - 1) param += ", ";
-            }
-            param += ")";
-        }
-
-        if (mod.equals("public")) {
-            str = Modifier.toString(member.getModifiers()) + " " + returnType + " " + member.getName() + param + "\n";
-        }
-
-        if (mod.equals("private")) {
-            str = Modifier.toString(member.getModifiers()) + " " + returnType + " " + member.getName() + param + "\n";
-        }
-
-        if (mod.equals("")) {
-            str = Modifier.toString(member.getModifiers()) + " " + returnType + " " + member.getName() + param + "\n";
-        }
-
-        if (mod.equals("protected")) {
-            str = Modifier.toString(member.getModifiers()) + " " + returnType + " " + member.getName() + param + "\n";
-        }
-
-        return str;
+    private static String methodToString(Method method) {
+        String mod = Modifier.toString(method.getModifiers());
+        String returnType = method.getReturnType().getName();
+        String params = formatParams(method.getParameters());
+        return mod + " " + returnType + " " + method.getName() + params;
     }
 
-    @PostMapping("/umlFromClasses")
-    public String umlFormClasses(@ModelAttribute("classesForm") ClassesForm classesForm, Model model) throws ClassNotFoundException, MalformedURLException {
-        //System.out.println("Folder: " + classesForm.getFolder().size());
 
-        /*
-        File dir = new File("C:/Users/Admin/Desktop/ZPO/projekt/TrinityProject/src/main/java/com/trinity/TrinityProject/exampleClasses");
-        File[] listOfFiles = dir.listFiles();
-        System.out.println(dir.getName());
+    @PostMapping("/umlFromJar")
+    public String umlFromJar(
+            @RequestParam("jarFile") MultipartFile jarFile,
+            @RequestParam(name = "publicOnly", defaultValue = "false") boolean publicOnly,
+            Model model
+    ) throws Exception {
 
-         */
+        if (jarFile.isEmpty()) {
+            throw new IllegalArgumentException("Nie wybrano pliku.");
+        }
+        String original = jarFile.getOriginalFilename() == null ? "" : jarFile.getOriginalFilename().toLowerCase();
+        if (!original.endsWith(".jar")) {
+            throw new IllegalArgumentException("To nie jest plik .jar");
+        }
 
-        /*
-        List<Class<?>> listClasses = new ArrayList<>();
-        listClasses.add(Class.forName("com.trinity.TrinityProject.exampleClasses.ExampleClass1"));
+        // 1) zapis do temp
+        Path tmpJar = Files.createTempFile("uml-", ".jar");
+        jarFile.transferTo(tmpJar.toFile());
 
-         */
-        //System.out.println(clazz.getName());
-        //System.out.println("field: " + clazz.getDeclaredFields()[0]);
+        // 2) odczyt klas z jar
+        List<String> fqcnList;
+        try (JarFile jar = new JarFile(tmpJar.toFile())) {
+            fqcnList = jar.stream()
+                    .map(JarEntry::getName)
+                    .filter(n -> n.endsWith(".class"))
+                    .filter(n -> !n.contains("$")) // na start pomijamy klasy wewnętrzne
+                    // OBSŁUGA: zwykły jar -> com/x/Y.class
+                    // jeśli masz Spring Boot jar -> BOOT-INF/classes/com/x/Y.class
+                    .map(n -> n.startsWith("BOOT-INF/classes/")
+                            ? n.substring("BOOT-INF/classes/".length())
+                            : n)
+                    .map(n -> n.replace("/", ".").replace(".class", ""))
+                    .collect(Collectors.toList());
+        }
 
-        /*
-        String[] classNames = new String[10];
-        String[][] fields = new String[10][20];
-        String[][] methods = new String[10][20];
-        String[][] constructors = new String[10][20];
+        // 3) classloader do tego jara
+        URL[] urls = { tmpJar.toUri().toURL() };
+        List<Class<?>> loaded = new ArrayList<>();
 
-        int i = 0;
-        for (Class<?> c : listClasses) {
-            Class<?> clazz = c;
-            String classStr = clazz.getSimpleName();
-            classNames[i] = classStr;
-            int fieldNum = 0;
-            int methodNum = 0;
-            int constrNum = 0;
+        try (URLClassLoader cl = new URLClassLoader(urls, this.getClass().getClassLoader())) {
+            for (String fqcn : fqcnList) {
+                try {
+                    Class<?> clazz = Class.forName(fqcn, false, cl);
+                    loaded.add(clazz);
+                } catch (Throwable ex) {
 
-
-            System.out.println(clazz.getSimpleName());
-
-            for (Field field : clazz.getDeclaredFields()) {
-                System.out.println(Modifier.toString(field.getModifiers()) + " " +field.getType() + " " + field.getName().replace("com.trinity.TrinityProject.exampleClasses.ExampleClass1.", " "));
-                String fieldStr = Modifier.toString(field.getModifiers()) + " " +field.getType() + " " + field.getName().replace("com.trinity.TrinityProject.exampleClasses.ExampleClass1.", " ");
-                fields[i][fieldNum] = fieldStr;
-                fieldNum += 1;
-            }
-
-            for (Constructor constructor : clazz.getDeclaredConstructors()) {
-                System.out.println(constructor.getName());
-                String param = "(";
-
-                Parameter[] p = constructor.getParameters();
-
-                String returnType = constructor.getAnnotatedReturnType().toString();
-
-                for (int k = 0; k < p.length; k++) {
-                    param += p[k].getType().getName() + " " + p[k].getName();
-                    if (k != p.length - 1) param += ", ";
                 }
-                param += ")";
+            }
+        } finally {
+            Files.deleteIfExists(tmpJar);
+        }
 
-                String constrStr = Modifier.toString(constructor.getModifiers()) + " " +
-                        returnType.replace("com.trinity.TrinityProject.exampleClasses." , "") +
-                        " " +
-                        constructor.getName().replace("com.trinity.TrinityProject.exampleClasses.", "") +
-                        param;
-                constructors[i][constrNum] = constrStr;
-                constrNum += 1;
+
+        int classCount = loaded.size();
+
+        String[] classNames = new String[classCount];
+
+        int perClassLimit = 200;
+        String[][] fields = new String[classCount][perClassLimit];
+        String[][] constructors = new String[classCount][perClassLimit];
+        String[][] methods = new String[classCount][perClassLimit];
+
+        for (int i = 0; i < classCount; i++) {
+            Class<?> clazz = loaded.get(i);
+            classNames[i] = clazz.getSimpleName();
+
+            int fIdx = 0;
+            for (Field f : clazz.getDeclaredFields()) {
+                if (publicOnly && !Modifier.isPublic(f.getModifiers())) continue;
+                if (fIdx >= perClassLimit) break;
+                fields[i][fIdx++] = fieldToString(f);
             }
 
-            for (Method method : clazz.getDeclaredMethods()) {
-                System.out.println(method.getName());
-                String param = "(";
-                Parameter[] p = method.getParameters();
-
-                String returnType = method.getReturnType().getName();
-
-                for (int k = 0; k < p.length; k++) {
-                    param += p[k].getType().getName() + " " + p[k].getName();
-                    if (k != p.length - 1) param += ", ";
-                }
-                param += ")";
-
-                String methodStr = Modifier.toString(method.getModifiers()) + " " + returnType + " " + method.getName() + param;
-                methods[i][methodNum] = methodStr;
-                methodNum += 1;
-
+            int cIdx = 0;
+            for (Constructor<?> c : clazz.getDeclaredConstructors()) {
+                if (publicOnly && !Modifier.isPublic(c.getModifiers())) continue;
+                if (cIdx >= perClassLimit) break;
+                constructors[i][cIdx++] = constructorToString(c);
             }
 
-            i += 1;
-        }
-
-        System.out.println();
-        System.out.println("TEST");
-        System.out.println("Fields");
-        for (int k = 0; k < fields[0].length; k++) {
-            if (fields[0][k] == null) break;
-            System.out.println(fields[0][k]);
-        }
-
-        System.out.println();
-        System.out.println("Constructors");
-        for (int k = 0; k < constructors[0].length; k++) {
-            if (constructors[0][k] == null) break;
-            System.out.println(constructors[0][k]);
-        }
-
-        System.out.println();
-        System.out.println("Methods");
-        for (int k = 0; k < methods[0].length; k++) {
-            if (methods[0][k] == null) break;
-            System.out.println(methods[0][k]);
-        }
-
-         */
-
-
-        /*
-        for (File f : classesForm.getFolder()) {
-            System.out.println("File name: " + f.getName());
-
-            System.out.println("URL: " + f.toURL());
-            //Class<?> clazz = Class.forName("file:/C:/Users/Admin/Desktop/ZPO/projekt/TrinityProject/ExampleClass1");
-
-
-            //URL classUrl;
-            //classUrl = new URL(f.toURL().toString());
-            //URL[] classUrls = { classUrl };
-            //URLClassLoader ucl = new URLClassLoader(classUrls);
-            //Class clazz = ucl.loadClass(getClass(f));
-
-            System.out.println(f.getName());
-            System.out.println("Class name: " + clazz.getName());
-            System.out.println("Fields: ");
-            for (Field fld : clazz.getDeclaredFields()) {
-                System.out.println(fld.getName());
+            int mIdx = 0;
+            for (Method m : clazz.getDeclaredMethods()) {
+                if (publicOnly && !Modifier.isPublic(m.getModifiers())) continue;
+                if (mIdx >= perClassLimit) break;
+                methods[i][mIdx++] = methodToString(m);
             }
         }
 
-         */
 
-/*
         model.addAttribute("classNames", classNames);
         model.addAttribute("fields", fields);
         model.addAttribute("constructors", constructors);
         model.addAttribute("methods", methods);
 
-
- */
-        //return "redirect:/showUml/" + classNames + "/" + fields + "/" + constructors + "/" + methods;
         return "redirect:/showUml";
-
     }
 
     @GetMapping("/showUml")
-    public String showUML(
-            //@PathVariable(value = "classNames") String[] classNames,
-                          //@PathVariable(value = "fields") String[][] fields,
-                          //@PathVariable(value = "constructors") String[][] constructors,
-                          //@PathVariable(value = "methods") String[][] methods,
-                          Model model) throws ClassNotFoundException {
+    public String showUML(Model model) {
 
-        /*
-        model.addAttribute("classNames", classNames);
-        model.addAttribute("fields", fields);
-        model.addAttribute("constructors", constructors);
-        model.addAttribute("methods", methods);
-
-        System.out.println("showUml");
-        System.out.println(classNames[0]);
-
-         */
-
-        List<Class<?>> listClasses = new ArrayList<>();
-        listClasses.add(Class.forName("com.trinity.TrinityProject.exampleClasses.ExampleClass1"));
-        //System.out.println(clazz.getName());
-        //System.out.println("field: " + clazz.getDeclaredFields()[0]);
-
-        String[] classNames = new String[10];
-        String[][] fields = new String[10][20];
-        String[][] methods = new String[10][20];
-        String[][] constructors = new String[10][20];
-
-        int i = 0;
-        for (Class<?> c : listClasses) {
-            Class<?> clazz = c;
-            String classStr = clazz.getSimpleName();
-            classNames[i] = classStr;
-            int fieldNum = 0;
-            int methodNum = 0;
-            int constrNum = 0;
-
-
-            System.out.println(clazz.getSimpleName());
-
-            for (Field field : clazz.getDeclaredFields()) {
-                System.out.println(Modifier.toString(field.getModifiers()) + " " +field.getType() + " " + field.getName().replace("com.trinity.TrinityProject.exampleClasses.ExampleClass1.", " "));
-                String fieldStr = Modifier.toString(field.getModifiers()) + " " +field.getType() + " " + field.getName().replace("com.trinity.TrinityProject.exampleClasses.ExampleClass1.", " ");
-                fields[i][fieldNum] = fieldStr;
-                fieldNum += 1;
-            }
-
-            for (Constructor constructor : clazz.getDeclaredConstructors()) {
-                System.out.println(constructor.getName());
-                String param = "(";
-
-                Parameter[] p = constructor.getParameters();
-
-                String returnType = constructor.getAnnotatedReturnType().toString();
-
-                for (int k = 0; k < p.length; k++) {
-                    param += p[k].getType().getName() + " " + p[k].getName();
-                    if (k != p.length - 1) param += ", ";
-                }
-                param += ")";
-
-                String constrStr = Modifier.toString(constructor.getModifiers()) + " " +
-                        returnType.replace("com.trinity.TrinityProject.exampleClasses." , "") +
-                        " " +
-                        constructor.getName().replace("com.trinity.TrinityProject.exampleClasses.", "") +
-                        param;
-                constructors[i][constrNum] = constrStr;
-                constrNum += 1;
-            }
-
-            for (Method method : clazz.getDeclaredMethods()) {
-                System.out.println(method.getName());
-                String param = "(";
-                Parameter[] p = method.getParameters();
-
-                String returnType = method.getReturnType().getName();
-
-                for (int k = 0; k < p.length; k++) {
-                    param += p[k].getType().getName() + " " + p[k].getName();
-                    if (k != p.length - 1) param += ", ";
-                }
-                param += ")";
-
-                String methodStr = Modifier.toString(method.getModifiers()) + " " + returnType + " " + method.getName() + param;
-                methods[i][methodNum] = methodStr;
-                methodNum += 1;
-
-            }
-
-            i += 1;
+        if (!model.containsAttribute("classNames")) {
+            model.addAttribute("classNames", new String[0]);
+            model.addAttribute("fields", new String[0][0]);
+            model.addAttribute("constructors", new String[0][0]);
+            model.addAttribute("methods", new String[0][0]);
         }
-
-        System.out.println();
-        System.out.println("TEST");
-        System.out.println("Fields");
-        for (int k = 0; k < fields[0].length; k++) {
-            if (fields[0][k] == null) break;
-            System.out.println(fields[0][k]);
-        }
-
-        System.out.println();
-        System.out.println("Constructors");
-        for (int k = 0; k < constructors[0].length; k++) {
-            if (constructors[0][k] == null) break;
-            System.out.println(constructors[0][k]);
-        }
-
-        System.out.println();
-        System.out.println("Methods");
-        for (int k = 0; k < methods[0].length; k++) {
-            if (methods[0][k] == null) break;
-            System.out.println(methods[0][k]);
-        }
-
-
-        /*
-        for (File f : classesForm.getFolder()) {
-            System.out.println("File name: " + f.getName());
-
-            System.out.println("URL: " + f.toURL());
-            //Class<?> clazz = Class.forName("file:/C:/Users/Admin/Desktop/ZPO/projekt/TrinityProject/ExampleClass1");
-
-
-            //URL classUrl;
-            //classUrl = new URL(f.toURL().toString());
-            //URL[] classUrls = { classUrl };
-            //URLClassLoader ucl = new URLClassLoader(classUrls);
-            //Class clazz = ucl.loadClass(getClass(f));
-
-            System.out.println(f.getName());
-            System.out.println("Class name: " + clazz.getName());
-            System.out.println("Fields: ");
-            for (Field fld : clazz.getDeclaredFields()) {
-                System.out.println(fld.getName());
-            }
-        }
-
-         */
-
-
-        model.addAttribute("classNames", classNames);
-        model.addAttribute("fields", fields);
-        model.addAttribute("constructors", constructors);
-        model.addAttribute("methods", methods);
-
-
         return "showUml";
+    }
+
+
+    @PostMapping("/clearUml")
+    public String clearUml(SessionStatus status) {
+        status.setComplete();
+        return "redirect:/";
     }
 }
