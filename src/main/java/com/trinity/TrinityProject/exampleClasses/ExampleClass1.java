@@ -1,5 +1,9 @@
 package com.trinity.TrinityProject.exampleClasses;
 
+import com.trinity.TrinityProject.annotations.CustomColor;
+
+@CustomColor(rgb = {0, 255, 85})
+@CustomColor(rgb = {0, 0, 0})
 public class ExampleClass1 {
     private int field1;
     private double field2;

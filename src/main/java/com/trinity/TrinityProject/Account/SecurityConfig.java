@@ -17,6 +17,7 @@ public class SecurityConfig {
                         .requestMatchers("/css/**", "/js/**", "/images/**").permitAll()
                         .requestMatchers("/", "/home").permitAll()
                         .requestMatchers("/auth/**").permitAll()
+                        .requestMatchers("/showClassDiagramFromLocalDir/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .formLogin(form -> form

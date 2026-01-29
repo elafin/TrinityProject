@@ -11,7 +11,7 @@
 
 <br>
 
-<canvas id="myChart" style="width:100%;max-width:900px;height:100%;max-height:450px" ></canvas>
+<canvas id="myChart" style="width:100%;max-width:1800px;height:100%;max-height:1400px" ></canvas>
 
 <script th:inline="javascript">
 
@@ -19,6 +19,7 @@
     var fields = /*[[${fields}]]*/ [];
     var constructors = /*[[${constructors}]]*/ [];
     var methods = /*[[${methods}]]*/ [];
+    var col = [[${rgb}]];
 
     console.log(5);
     console.log(classNames[0]);
@@ -34,31 +35,25 @@
     canvas.setAttribute('height', style_height * dpi);
     canvas.setAttribute('width', style_width * dpi);
 
-    var shapeX = 10;
-    var shapeY = 10;
+    var shapeX = 5;
+    var shapeY = 5;
 
     var fontX = 10;
-    var fontY = 50;
+    var fontY = 20;
 
 
-    ctx.font = "12px Arial";
-    ctx.fillText(classNames[0], fontX, fontY);
 
-    fontY = fontY + 30;
-
-    ctx.beginPath();
-    ctx.lineWidth = "5";
-    ctx.strokeStyle = "green";
-    ctx.rect(5, 30, 500, 340);
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.lineWidth = "5";
-    ctx.strokeStyle = "green";
-    ctx.rect(5, 60, 500, 310);
-    ctx.stroke();
 
     for (let i = 0; i < classNames.length; i++) {
+        if (!classNames[i]) {
+            break;
+        }
+
+
+        ctx.font = "12px Arial";
+        ctx.fillText(classNames[i], fontX, fontY);
+
+        fontY = fontY + 30;
 
         for (let j = 0; j < fields.length; j++) {
             if (!fields[i][j]) {
@@ -90,6 +85,39 @@
             ctx.fillText(methods[i][j], fontX, fontY);
             fontY = fontY + 25;
         }
+
+        console.log(classNames[i]);
+        console.log(shapeY);
+        console.log(fontY);
+
+        ctx.beginPath();
+        ctx.lineWidth = "5";
+        ctx.strokeStyle = 'rgb(' + col[i][0] + ',' + col[i][1] + ',' + col[i][2] + ')';
+        ctx.rect(5,shapeY, 500,shapeY + (fontY - shapeY));
+        ctx.stroke();
+        ctx.closePath();
+
+        console.log(classNames[i]);
+        console.log(shapeY);
+        console.log(fontY);
+
+        ctx.beginPath();
+        ctx.lineWidth = "5";
+        ctx.strokeStyle = 'rgb(' + col[i][0] + ',' + col[i][1] + ',' + col[i][2] + ')';
+        ctx.rect(5,shapeY, 500,shapeY + 20);
+        ctx.stroke();
+        ctx.closePath();
+
+        console.log(classNames[i]);
+        console.log(shapeY);
+        console.log(fontY);
+
+        fontY = fontY + 50;
+        shapeY = shapeY + fontY - 20;
+
+        console.log(classNames[i]);
+        console.log(shapeY);
+        console.log(fontY);
     }
 
 </script>
